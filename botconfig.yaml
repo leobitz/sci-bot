@@ -1,5 +1,5 @@
 
-corpus_file: data/val.txt
+corpus_file: pubmed-dataset/pubmed-dataset/train.txt
 max_corpus_samples: 10
 doc2vec_window_size: 256 # 128 words at once
 doc2vec_stride_size: 128
@@ -7,3 +7,4 @@ include_explanation: True
 rephrase_explanation: True
 num_explanation_sentence: 3
 answer_score_threshold: 0.5
+topic_search: True

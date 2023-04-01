@@ -4,7 +4,7 @@ from sentence_transformers import SentenceTransformer, util
 import numpy as np
 from transformers import pipeline
 from summarizer.sbert import SBertSummarizer
-
+import yaml
 from top2vec import Top2Vec
 
 
@@ -40,7 +40,8 @@ class ChatBotEngine:
                  confidence_threshold = 0.5, 
                  max_num_samples = 10,
                  window_size: int = 128, 
-                 stride: int = 128) -> None:
+                 stride: int = 128,
+                 topic_search = True) -> None:
         self.explain = explain
         self.rephrase_explain = rephrase_explain
         self.exp_sentences = exp_sentences
@@ -48,12 +49,14 @@ class ChatBotEngine:
         self.window_size = window_size
         self.stride = stride
         self.max_num_samples = max_num_samples
+        self.topic_search = topic_search
 
         self.SUMMARIZER_MODEL = SBertSummarizer('paraphrase-MiniLM-L6-v2')
         self.SENTENCE_ENCODER = SentenceTransformer('all-MiniLM-L6-v2')
         self.Q_ANSWERER = pipeline("question-answering", model='distilbert-base-cased-distilled-squad')
         self.REPHRASER = self.SUMMARIZER_MODEL
         self.topic_model = None
+        self.CORPUS_EMB = None
 
         if doc2vec == 'summarize':
             self.doc2vec_encode = self.SENTENCE_ENCODER.encode
@@ -63,7 +66,12 @@ class ChatBotEngine:
         else:
             raise Exception("doc2vec strategy not specified")
 
-        self.CORPUS_DB, self.CORPUS_EMB = self.prepare_doc_encoding(document_file_path, self.max_num_samples)
+        
+        if self.topic_search:
+            self.topic_model = self.prepare_doc_encoding(document_file_path, self.max_num_samples)
+        else:
+            self.CORPUS_DB, self.CORPUS_EMB = self.prepare_doc_encoding(document_file_path, self.max_num_samples)
+            
 
     def bert_summarize_text(self, texts: List[str], max_word_length: int) -> str:
         result = self.SUMMARIZER_MODEL(texts, min_length=max_word_length)
@@ -79,7 +87,9 @@ class ChatBotEngine:
             raw_articles.append(passage)
 
         file.close()
-        self.topic_model = Top2Vec(raw_articles, embedding_model="all-MiniLM-L6-v2")
+
+        topic_model = Top2Vec(raw_articles, embedding_model="all-MiniLM-L6-v2")
+        return topic_model
 
     def prepare_doc_encoding(self, file_name: str, num_samples: int) -> List:
         file = open(file_name, encoding='utf-8', mode='r')
@@ -105,12 +115,16 @@ class ChatBotEngine:
 
 
     def search(self, question: str, corpus_emb: np.ndarray,  top_k: int = 5) -> str:
+
         if self.topic_model:
             hits = self.topic_model.query_documents(question, 1)
+            top = (hits[2][0], hits[1][0])
         else:
             question_emb = self.SENTENCE_ENCODER.encode(question)
             hits = util.semantic_search(question_emb, corpus_emb, top_k=top_k)
-        return hits, question_emb
+            top = (hits[0][0]['corpus_id'], hits[0][0]['score'])
+        
+        return top, question_emb
 
     def answer(self, question: str, context: str) -> str:
         result = self.Q_ANSWERER(question=question, context=context)
@@ -142,12 +156,12 @@ class ChatBotEngine:
         if question == None or question.strip() == '' or len(question.split()) <= 2:
             return "Please give me a question with at least 3 words"
 
-        hits, question_emb = self.search(question, self.CORPUS_EMB)
+        top_hit, question_emb = self.search(question, self.CORPUS_EMB)
 
         # if a document that is similar to the question intent is found
-        if hits[0][0]['score'] >= self.confidence_threshold: 
+        if top_hit[1] >= self.confidence_threshold: 
             
-            context = self.CORPUS_DB[hits[0][0]['corpus_id']]
+            context = self.CORPUS_DB[top_hit[0]]
             # within_passage_hit, chunks = self.search_within_passage(question_emb, context, top_k=5)
             # context = chunks[within_passage_hit[0][0]['corpus_id']]
 
@@ -169,20 +183,23 @@ class ChatBotEngine:
         return "Sorry, I don't know" 
 
 if __name__ == "__main__":
-    botConfig = yaml.safe_load(file)
-    # global chatbot_engine
-    chatbot_engine = ChatBotEngine(
-        document_file_path=botConfig['corpus_file'],
-            doc2vec = 'summarize', 
-                explain = botConfig['include_explanation'], 
-                rephrase_explain = botConfig['rephrase_explanation'],
-                exp_sentences = botConfig['num_explanation_sentence'], 
-                confidence_threshold = botConfig['answer_score_threshold'], 
-                max_num_samples = botConfig['max_corpus_samples'],
-                window_size = botConfig['doc2vec_window_size'],
-                stride = botConfig['doc2vec_stride_size']
-    )
-    # engine = ChatBotEngine(document_file_path='data/val.txt', max_num_samples=100)
+
+    with open('botconfig.yaml', 'r') as file:
+
+        botConfig = yaml.safe_load(file)
+        # global chatbot_engine
+        chatbot_engine = ChatBotEngine(
+            document_file_path=botConfig['corpus_file'],
+                doc2vec = 'summarize', 
+                    explain = botConfig['include_explanation'], 
+                    rephrase_explain = botConfig['rephrase_explanation'],
+                    exp_sentences = botConfig['num_explanation_sentence'], 
+                    confidence_threshold = botConfig['answer_score_threshold'], 
+                    max_num_samples = botConfig['max_corpus_samples'],
+                    window_size = botConfig['doc2vec_window_size'],
+                    stride = botConfig['doc2vec_stride_size'],
+                    topic_search= botConfig['topic_search']
+        )
 
     question = "who decides whether stroke status is correct?"
     ans = chatbot_engine.query(question)
