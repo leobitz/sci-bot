@@ -6,13 +6,6 @@ from transformers import pipeline
 from summarizer.sbert import SBertSummarizer
 
 from top2vec import Top2Vec
-# class DocHierarchicalSearch:
-
-#     def __init__(self, encoder) -> None:
-#         self.encoder = encoder
-
-#     def build_tree(self, doc2vec):
-
 
 
 class SlidingWindowDoc2Vec:
@@ -117,7 +110,7 @@ class ChatBotEngine:
         else:
             question_emb = self.SENTENCE_ENCODER.encode(question)
             hits = util.semantic_search(question_emb, corpus_emb, top_k=top_k)
-        return hits
+        return hits, question_emb
 
     def answer(self, question: str, context: str) -> str:
         result = self.Q_ANSWERER(question=question, context=context)
@@ -127,17 +120,37 @@ class ChatBotEngine:
         new_explanation = self.REPHRASER(final_context, num_sentences=self.exp_sentences)
         return new_explanation
 
+    def search_within_passage(self, question_emb, context, top_k=1):
+        words = context.split()
+
+        if len(words) <= self.window_size:
+            return self.encoder([context])
+        
+        windows = []
+        for i in range(0, len(words) - self.stride, self.stride):
+            sub_text = " ".join(words[i:i + self.window_size])
+            windows.append(sub_text)
+
+        chunk_emb = self.SENTENCE_ENCODER.encode(windows)
+        hits = util.semantic_search(question_emb, chunk_emb, top_k=top_k)
+        
+        return hits, windows
+
+
     def query(self, question: str):
 
         if question == None or question.strip() == '' or len(question.split()) <= 2:
             return "Please give me a question with at least 3 words"
 
-        hits = self.search(question, self.CORPUS_EMB)
+        hits, question_emb = self.search(question, self.CORPUS_EMB)
 
         # if a document that is similar to the question intent is found
         if hits[0][0]['score'] >= self.confidence_threshold: 
-
+            
             context = self.CORPUS_DB[hits[0][0]['corpus_id']]
+            # within_passage_hit, chunks = self.search_within_passage(question_emb, context, top_k=5)
+            # context = chunks[within_passage_hit[0][0]['corpus_id']]
+
             result = self.answer(question, context)
             
             exp = None
@@ -162,3 +175,9 @@ if __name__ == "__main__":
     ans = engine.query(question)
 
     print(ans)
+
+    # text = "who decides ChatBotEngine. whether stroke . ChatBotEngine status is correct?"
+    # sentences = []
+    # while True:
+
+    #     text.index('.')
