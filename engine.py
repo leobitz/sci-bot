@@ -169,10 +169,23 @@ class ChatBotEngine:
         return "Sorry, I don't know" 
 
 if __name__ == "__main__":
-    engine = ChatBotEngine(document_file_path='data/val.txt', max_num_samples=100)
+    botConfig = yaml.safe_load(file)
+    # global chatbot_engine
+    chatbot_engine = ChatBotEngine(
+        document_file_path=botConfig['corpus_file'],
+            doc2vec = 'summarize', 
+                explain = botConfig['include_explanation'], 
+                rephrase_explain = botConfig['rephrase_explanation'],
+                exp_sentences = botConfig['num_explanation_sentence'], 
+                confidence_threshold = botConfig['answer_score_threshold'], 
+                max_num_samples = botConfig['max_corpus_samples'],
+                window_size = botConfig['doc2vec_window_size'],
+                stride = botConfig['doc2vec_stride_size']
+    )
+    # engine = ChatBotEngine(document_file_path='data/val.txt', max_num_samples=100)
 
     question = "who decides whether stroke status is correct?"
-    ans = engine.query(question)
+    ans = chatbot_engine.query(question)
 
     print(ans)
 
