@@ -1,6 +1,6 @@
 
 corpus_file: pubmed-dataset/pubmed-dataset/train.txt
-max_corpus_samples: -1 # maximum samples of the corpus. if -1, then all samples will be taken
+max_corpus_samples: 10000 # maximum samples of the corpus. if -1, then all samples will be taken
 doc2vec_window_size: 256 # a chunk will have 256 tokens
 doc2vec_stride_size: 128 # a window will slide with stride
 include_explanation: True # explain the answer
