@@ -1,3 +1,2 @@
 #!/bin/bash
-python ./engine.py
-# python ./ignite.py
+python ./ignite.py

@@ -9,13 +9,31 @@ from top2vec import Top2Vec
 
 
 class SlidingWindowDoc2Vec:
+    """
+    Document encoder class that uses chunking strategy to manage a very long document
 
+    With the given window size and stride, it convolves on the document and encode each window.
+    Then the average of the encoded windows is taken as a final document encoding.
+
+    window_size: the window or chunk size which will be used to convolve the document
+    stride: the stride which will be used to move the window
+
+    """
     def __init__(self, encoder, window_size=256, stride=128) -> None:
-        self.window_size = 256
-        self.stride = 128
+        self.window_size = window_size
+        self.stride = stride
         self.encoder = encoder
     
     def encode(self, text):
+        """
+        Takes a document and if the number of tokens is more than the window size, 
+        it will be chunked into the window size and encoded.
+
+        Inputs: 
+            text: str - input string which will be encoded
+        Returns:
+            numpy.ndarray - vector representing the document
+        """
         words = text.split()
 
         if len(words) <= self.window_size:
@@ -26,11 +44,13 @@ class SlidingWindowDoc2Vec:
             sub_text = " ".join(words[i:i + self.window_size])
             windows.append(sub_text)
 
-        return self.encoder(windows).mean(axis=0)
+        return self.encoder(windows).mean(axis=0).reshape((1, -1))
 
 
 class ChatBotEngine:
-
+    """
+    Chat bot class
+    """
     def __init__(self, 
                 document_file_path,
                 doc2vec = 'summarize', 
@@ -60,7 +80,7 @@ class ChatBotEngine:
 
         if doc2vec == 'summarize':
             self.doc2vec_encode = self.SENTENCE_ENCODER.encode
-        elif doc2vec == 'ave_window':
+        elif doc2vec == 'chunk_mean':
             encoder = SlidingWindowDoc2Vec(self.SENTENCE_ENCODER.encode, self.window_size, self.stride)
             self.doc2vec_encode = encoder.encode
         else:
@@ -68,7 +88,7 @@ class ChatBotEngine:
 
         
         if self.topic_search:
-            self.topic_model = self.prepare_doc_encoding(document_file_path, self.max_num_samples)
+            self.CORPUS_DB, self.topic_model = self.prepare_top_vec(document_file_path, self.max_num_samples)
         else:
             self.CORPUS_DB, self.CORPUS_EMB = self.prepare_doc_encoding(document_file_path, self.max_num_samples)
             
@@ -81,22 +101,35 @@ class ChatBotEngine:
         file = open(file_name, encoding='utf-8', mode='r')
         raw_articles = []
         
-        for i in range(num_samples):
-            art = json.loads(file.readline())
+        counter = 0
+        while True:
+
+            line = file.readline()
+            if len(line) == 0 or counter == num_samples:
+                break
+
+            art = json.loads(line)
             passage = " ".join(art['article_text'])
             raw_articles.append(passage)
 
-        file.close()
+            counter += 1
 
+        file.close()
         topic_model = Top2Vec(raw_articles, embedding_model="all-MiniLM-L6-v2")
-        return topic_model
+        return raw_articles, topic_model
 
     def prepare_doc_encoding(self, file_name: str, num_samples: int) -> List:
         file = open(file_name, encoding='utf-8', mode='r')
         raw_articles = []
         doc_vec = []
-        
-        for i in range(num_samples):
+
+        counter = 0
+        while True:
+
+            line = file.readline()
+            if len(line) == 0 or counter == num_samples:
+                break
+
             art = json.loads(file.readline())
             passage = " ".join(art['article_text'])
             raw_articles.append(passage)
@@ -107,20 +140,21 @@ class ChatBotEngine:
             enc = self.doc2vec_encode(passage)
             doc_vec.append(enc)
 
+            counter += 1
+
         file.close()
         
-        doc_vec = np.stack(doc_vec)
-
+        doc_vec = np.vstack(doc_vec)
         return raw_articles, doc_vec
 
 
     def search(self, question: str, corpus_emb: np.ndarray,  top_k: int = 5) -> str:
 
+        question_emb = self.SENTENCE_ENCODER.encode(question)
         if self.topic_model:
             hits = self.topic_model.query_documents(question, 1)
             top = (hits[2][0], hits[1][0])
         else:
-            question_emb = self.SENTENCE_ENCODER.encode(question)
             hits = util.semantic_search(question_emb, corpus_emb, top_k=top_k)
             top = (hits[0][0]['corpus_id'], hits[0][0]['score'])
         
@@ -157,14 +191,10 @@ class ChatBotEngine:
             return "Please give me a question with at least 3 words"
 
         top_hit, question_emb = self.search(question, self.CORPUS_EMB)
-
         # if a document that is similar to the question intent is found
         if top_hit[1] >= self.confidence_threshold: 
             
             context = self.CORPUS_DB[top_hit[0]]
-            # within_passage_hit, chunks = self.search_within_passage(question_emb, context, top_k=5)
-            # context = chunks[within_passage_hit[0][0]['corpus_id']]
-
             result = self.answer(question, context)
             
             exp = None
@@ -180,7 +210,7 @@ class ChatBotEngine:
             if score > self.confidence_threshold:
                 return ans
         
-        return "Sorry, I don't know" 
+        return "Sorry, I don't know. Please ask me another question" 
 
 if __name__ == "__main__":
 
@@ -190,7 +220,7 @@ if __name__ == "__main__":
         # global chatbot_engine
         chatbot_engine = ChatBotEngine(
             document_file_path=botConfig['corpus_file'],
-                doc2vec = 'summarize', 
+                doc2vec = 'chunk_mean', 
                     explain = botConfig['include_explanation'], 
                     rephrase_explain = botConfig['rephrase_explanation'],
                     exp_sentences = botConfig['num_explanation_sentence'], 
@@ -206,8 +236,3 @@ if __name__ == "__main__":
 
     print(ans)
 
-    # text = "who decides ChatBotEngine. whether stroke . ChatBotEngine status is correct?"
-    # sentences = []
-    # while True:
-
-    #     text.index('.')
