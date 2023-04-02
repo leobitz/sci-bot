@@ -285,7 +285,7 @@ if __name__ == "__main__":
         # global chatbot_engine
         chatbot_engine = ChatBotEngine(
             document_file_path=botConfig['corpus_file'],
-                doc2vec = 'chunk_mean', 
+                doc2vec = 'summarize', 
                     explain = botConfig['include_explanation'], 
                     rephrase_explain = botConfig['rephrase_explanation'],
                     exp_sentences = botConfig['num_explanation_sentence'], 
