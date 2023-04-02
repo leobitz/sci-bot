@@ -8,25 +8,26 @@ from time import time
 from engine import ChatBotEngine
 import yaml
 
-chatbot_engine: ChatBotEngine = None
+
+with open('botconfig.yaml', 'r') as file:
+    botConfig = yaml.safe_load(file)
+    chatbot_engine = ChatBotEngine(
+        document_file_path=botConfig['corpus_file'],
+        doc2vec = 'chunk_mean', 
+        explain = botConfig['include_explanation'], 
+        rephrase_explain = botConfig['rephrase_explanation'],
+        exp_sentences = botConfig['num_explanation_sentence'], 
+        confidence_threshold = botConfig['answer_score_threshold'], 
+        max_num_samples = botConfig['max_corpus_samples'],
+        window_size = botConfig['doc2vec_window_size'],
+        stride = botConfig['doc2vec_stride_size'],
+        topic_search= botConfig['topic_search']
+    )
 ############################################################
 # Callback function called on update config
 ############################################################
 def config(configuration: ConfigClass):
-    with open('botconfig.yaml', 'r') as file:
-        botConfig = yaml.safe_load(file)
-        global chatbot_engine
-        chatbot_engine = ChatBotEngine(
-            document_file_path=botConfig['corpus_file'],
-                doc2vec = 'summarize', 
-                 explain = botConfig['include_explanation'], 
-                 rephrase_explain = botConfig['rephrase_explanation'],
-                 exp_sentences = botConfig['num_explanation_sentence'], 
-                 confidence_threshold = botConfig['answer_score_threshold'], 
-                 max_num_samples = botConfig['max_corpus_samples'],
-                 window_size = botConfig['doc2vec_window_size'],
-                 stride = botConfig['doc2vec_stride_size']
-        )
+    pass
     
 
 
