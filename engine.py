@@ -94,10 +94,29 @@ class ChatBotEngine:
             
 
     def bert_summarize_text(self, texts: List[str], max_word_length: int) -> str:
+        """
+        Given a text, it will summarize it with max maximum word length
+
+        Inputs:
+            - texts: list of string 
+            - max_word_length: maximum tokens in the summarized text
+        Returns:
+            - list of summarized texts
+        """
         result = self.SUMMARIZER_MODEL(texts, min_length=max_word_length)
         return result
 
     def prepare_top_vec(self, file_name, num_samples: int):
+        """
+        Builds the topic level representation of the corpus so that hierarchical search can be applied
+
+        Inputs:
+            - file_name: path to the corpus
+            - num_samples: number of the samples to include in the corpus
+        Returns:
+            - list of raw articles
+            - topic model 
+        """
         file = open(file_name, encoding='utf-8', mode='r')
         raw_articles = []
         
@@ -119,6 +138,16 @@ class ChatBotEngine:
         return raw_articles, topic_model
 
     def prepare_doc_encoding(self, file_name: str, num_samples: int) -> List:
+        """
+        Builds a linearly searchable encoding of the corpus
+
+        Inputs:
+            - file_name: path to the corpus
+            - num_samples: number of the samples to include in the corpus
+        Returns:
+            - list of raw articles
+            - document to vector
+        """
         file = open(file_name, encoding='utf-8', mode='r')
         raw_articles = []
         doc_vec = []
@@ -149,7 +178,18 @@ class ChatBotEngine:
 
 
     def search(self, question: str, corpus_emb: np.ndarray,  top_k: int = 5) -> str:
-
+        """
+        Searches a question from the corpus embedding
+        If the topic model is chosen, then search is hierarchical
+        else, linear search will be applied
+        Inputs:
+            - question: string of the question
+            - corpus embedding: the vector representation of each document
+        Output:
+            - index and score tuple representing the answer document 
+                    and confidence score of having the answer
+            - question embedding 
+        """
         question_emb = self.SENTENCE_ENCODER.encode(question)
         if self.topic_model:
             hits = self.topic_model.query_documents(question, 1)
@@ -161,14 +201,31 @@ class ChatBotEngine:
         return top, question_emb
 
     def answer(self, question: str, context: str) -> str:
+        """
+        Given the question and context, returns the answer
+        """
         result = self.Q_ANSWERER(question=question, context=context)
         return result
 
     def rephrase_explanation(self, final_context):
+        """
+        given the final context that the has the answer, returns a summarized explanation of the answer
+        """
         new_explanation = self.REPHRASER(final_context, num_sentences=self.exp_sentences)
         return new_explanation
 
     def search_within_passage(self, question_emb, context, top_k=1):
+        """
+        A document might very large. Hence, a specific answer can be searched within the
+        document in a chunked manner
+
+        Inputs:
+            - Question embedding
+            - Context or document
+        Return:
+            - the index and the confidence tuple of search result
+            - the chunks
+        """
         words = context.split()
 
         if len(words) <= self.window_size:
@@ -186,7 +243,16 @@ class ChatBotEngine:
 
 
     def query(self, question: str):
-
+        """
+        Given a question, it searches through out the corpus
+            - if the answer is not in the corpus, it returns the string 'Sorry, I don't know'
+            - if it found the answer, it returns the answer with an explanation
+            - explanation should be activated when creating the class
+        Inputs:
+            - question string
+        Returns:
+            - answer string
+        """
         if question == None or question.strip() == '' or len(question.split()) <= 2:
             return "Please give me a question with at least 3 words"
 
@@ -215,7 +281,6 @@ class ChatBotEngine:
 if __name__ == "__main__":
 
     with open('botconfig.yaml', 'r') as file:
-
         botConfig = yaml.safe_load(file)
         # global chatbot_engine
         chatbot_engine = ChatBotEngine(
